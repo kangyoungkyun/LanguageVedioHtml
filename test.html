@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>HTML Video Element</title>
+    <meta name="viewport" content="width=device-width">
+    <!-- <link rel="stylesheet" href="main.css"/> -->
+    <style>
+        .control{
+            font-size: 1.5rem;
+            padding: 0.25rem 2rem;
+            min-width: 10rem;
+            margin: 0.5rem 0;
+            cursor: pointer;
+        }
+        ::cue{
+            font-size: 20px;
+            color: #333;
+            background-color: rgba(255, 200, 10, 0.64);
+        }
+        ::cue(b){
+            text-transform: uppercase;
+            color: red;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>HTML Video Element</h1>
+    </header>
+
+
+    <main>    
+        
+        <video ontimeupdate="checkTimeUpdate()" controls id="video" poster="person-female-lg.png">
+            <source src="lion-sample.mp4" type="video/mp4"/>
+            <source src="lion-sample.webm" type="video/webm"/>
+            <source src="lion-sample.ogv" type="video/ogg"/>
+            <source src="lion-sample.3gp" type="video/3gp"/>
+            
+            <track default 
+                    src="lion1.vtt" 
+                    kind="captions" 
+                    srclang="en"
+                    label="English Captions"/>
+            
+            <p><a href="" download>Download the Video</a></p>
+        </video>
+
+        <br/>
+
+        <button id="btnPre" class="control">이전</button><br/>
+        <button id="btnPlay" class="control">재생</button><br/>
+        <button id="btnNext" class="control">다음</button><br/>
+        <button id="btnLoop" class="control">반복</button><br/>
+
+        <button id="btnOneRepeat" class="control">첫번째문장반복</button><br/>
+
+        <div id="trackText"></div><br/>
+    
+    </main>
+
+
+    <script>
+        /*********************************************************
+                                전역변수 
+        *********************************************************/
+
+        //비디오 객체 전역변수
+        let vid;
+
+        //재생중인지 체크
+        let playStatus = false;
+
+        //구간 재생시 시작 시간
+        let startTimeInQue;
+        //구간 재생시 마지막 시간
+        let endTimeInQue;
+
+
+        //자막 정보 리스트
+        let trackInfoArray = [];
+
+        //현재 자막 트랙 번호 : 1, 2, 3 ....
+        let trackNowIndex = 1;
+
+        //마지막 자막 트랙 번호
+        let trackLastIndex;
+
+        /**********************. 전역변수 끝. ******************************/
+        /****************************************************************/
+
+
+        //초기화 함수 호출
+        document.addEventListener('DOMContentLoaded', init);
+        
+
+        //초기화 함수
+        function init(){
+
+            //버튼 엘리먼트에 이벤트 걸어주기
+            document.getElementById('btnPre').addEventListener('click', preAction);                     //이전
+            document.getElementById('btnPlay').addEventListener('click', playAction);                   //재생
+            document.getElementById('btnNext').addEventListener('click', nextAction);                   //다음
+            document.getElementById('btnLoop').addEventListener('click', loopAction);                   //반복
+            document.getElementById('btnOneRepeat').addEventListener('click', btnOneRepeat);            //테스트 버튼
+
+
+            //트랙 객체
+            var trackElements = document.querySelectorAll("track");
+            
+            // 각 트랙 엘리먼트에 대해서
+            for (var i = 0; i < trackElements.length; i++) {
+              //트랙 엘리먼트가 load 될때, 이벤트 함수를 통해서 트랙의 아이템 자료구조에 담기
+              trackElements[i].addEventListener("load", function() {
+               
+                var textTrack = this.track;                                 // "this"는 HTMLTrackElement.TextTrack 객체가 아님
+                
+                    // 각 큐에 대해서
+                    for (var j = 0; j < textTrack.cues.length; ++j) {
+                      
+                      // 큐 아이템
+                      var cue = textTrack.cues[j];
+
+                        //해당 자막 내용의 정보객체
+                        let trackInfoObj = {    index       : cue.id,
+                                                text        : cue.text,
+                                                startTime   : cue.startTime,
+                                                endTime     : cue.endTime
+                                            }
+                        //리스트에 넣어주기
+                        console.log("리스트에 넣어주기");                   
+                        trackInfoArray.push(trackInfoObj);
+                        trackLastIndex = textTrack.cues.length;  //전체 큐 아이템 수
+
+
+                    };//각 큐에 대해서 for - end
+                });// addEventListener - end
+            };// 각 트랙 엘리먼트에 대해서 for - end
+
+
+            //비디오 객체 할당.
+            vid = document.getElementById('video');
+            
+            console.log("##############  video 객체  ####################");
+            console.log( vid );                          //<video> .... </video>
+            console.log({vid})                           //{vid: video#video}
+            
+            let mediaType = vid.type;                   //undefined
+            let autoplay = vid.autoplay;                //자동 재생
+            let controls = vid.controls;                //작동
+            let duration = vid.duration;                //길이
+            let currentTime = vid.currentTime;          //현재 시간
+            let loop = vid.loop;                        //반복 여부
+            let seeking = vid.seeking;                    
+
+
+
+            console.log("미디어타입 : " + mediaType);        //undefined
+            console.log("자동재생 : " + autoplay);          //false
+            console.log("작동 : " + controls);             //NaN
+            console.log("재싱길이 : " + duration);          //false
+            console.log("현재시간 : " + currentTime);       //0
+            console.log("반복여부 : " + loop);              //false
+            console.log("seeking : " + seeking);          //false
+
+
+
+            let str = vid.canPlayType("video/mp4");
+            console.log(str);           //maybe
+            
+            vid.volume = 0.9;           //  0 - 1
+            vid.loop = true;          //자동 반복
+
+
+        }
+        
+
+        //재생 
+        function playAction(ev){
+
+            //재생중이 아니면 -> 재생
+            if(!playStatus){
+
+                document.getElementById('btnPlay').innerHTML = "정지";
+                playStatus = true;  //재생중
+
+
+                vid.play()
+                .then(()=>{
+                    console.log('비디오가 재생되고 있습니다.')
+                })
+                .catch((err)=>{
+                    console.log( {err} );
+                });
+
+
+                //**** !! 비디오가 재생된 후 text tracks에 접근할 수 있다. *****/
+                
+                //비디오 트랙들
+                let myTextTrackList = vid.textTracks;
+
+                //비디오 트랙 하나
+                let myTextTrack = myTextTrackList[0];
+
+                //트랙 큐
+                let cueList = myTextTrack.cues;
+
+
+/*
+
+                // TextTrackList 객체
+                console.log("##############  TextTrackList 객체  ###############");
+                console.log("myTextTrackList : " + myTextTrackList);              //[object TextTrackList]
+                console.log(myTextTrackList.length + ' 개의 트랙이 있습니다');
+                
+
+                // TextTrack 객체
+                console.log("##############  TextTrack 객체  ###############");
+                console.log("myTextTrack : " + myTextTrack );      //[object TextTrack]
+
+                console.log("TextTrack.activeCues : " + myTextTrack.activeCues);    //[object TextTrackCueList]
+                console.log("TextTrack.cues : " + myTextTrack.cues );               //[object TextTrackCueList]
+                console.log("TextTrack.id : " + myTextTrack.id );                   //
+                console.log("TextTrack.inBandMetadataTrackDispatchType : " + myTextTrack.inBandMetadataTrackDispatchType );     //undefined
+                console.log("TextTrack.kind : " + myTextTrack.kind );               //captions
+                console.log("TextTrack.label : " + myTextTrack.label );             //English Captions
+                console.log("TextTrack.language : " + myTextTrack.language);        //en
+                console.log("TTextTrack.mode : " + myTextTrack.mode );              //showing
+
+
+                console.log("##############  TextTrackCueList 객체  ###############");
+                //  TextTrackCueList 객체
+                console.log("cueList :" + cueList );                            // [object TextTrackCueList]
+                console.log("cueList.length : " + cueList.length );             //  3   : vtt 파일안에 자막이 총 3개 있다는 뜻
+                
+
+                console.log("##############  VTTCue 객체   ###############");
+                
+                // VTTCue 객체
+                var vttCue = cueList[0] ;                                        //[object VTTCue]
+                console.log("vttCue region : " + vttCue.region);                 //undefined                     
+                console.log("vttCue vertical : " + vttCue.vertical);             //
+                console.log("vttCue snapToLines : " + vttCue.snapToLines);       //true
+                console.log("vttCue line : " + vttCue.line);
+                console.log("vttCue lineAlign : " + vttCue.lineAlign);           // undefined          
+                console.log("vttCue position : " + vttCue.position);             // auto
+                console.log("vttCue positionAlign : " + vttCue.positionAlign);   // undefined
+                console.log("vttCue size : " + vttCue.size);                     // 100
+                console.log("vttCue textAlign : " + vttCue.textAlign);           //undefined
+                
+                console.log("vttCue startTime : " + vttCue.startTime);            //
+                console.log("vttCue endTime : " + vttCue.endTime);                //
+                console.log("vttCue text : " + vttCue.text);                     //
+                */
+
+            }else{
+                 //재생중이면 --> 정지
+                 pauseAction();
+            } 
+        }
+
+
+        //일시정지 - 함수
+        function pauseAction(){
+                 console.log("일시 정지 함수 진입");
+                 playStatus = false;  //정지
+                 document.getElementById('btnPlay').innerHTML = "재생";
+                 vid.pause();
+                 console.log( vid.currentTime, "of", vid.duration, "seconds played");    //22.827981 "of" 116.7 "seconds played"
+                 console.log('video is paused. No Promise here');
+
+        }
+
+
+
+
+         //첫번째 문장만 반복      
+        function btnOneRepeat(ev){
+            console.log("##############  video 객체  ###############");
+            console.log( vid );                          //<video> .... </video>
+            console.log({vid})                           //{vid: video#video}
+            
+            let mediaType = vid.type;                   //undefined
+            let autoplay = vid.autoplay;                //자동 재생
+            let controls = vid.controls;                //작동
+            let duration = vid.duration;                //길이
+            let currentTime = vid.currentTime;          //현재 시간
+            let loop = vid.loop;                        //반복 여부
+            let seeking = vid.seeking;                    
+
+
+
+            console.log("미디어타입 : " + mediaType);        //undefined
+            console.log("자동재생 : " + autoplay);          //false
+            console.log("작동 : " + controls);             //NaN
+            console.log("재싱길이 : " + duration);          //false
+            console.log("현재시간 : " + currentTime);       //0
+            console.log("반복여부 : " + loop);              //false
+            console.log("seeking : " + seeking);          //false
+
+
+            console.log("==============첫번째 자막정보================");      
+            let text = vid.textTracks[0].cues[0].text;
+            let startTime = vid.textTracks[0].cues[0].startTime;
+            let endTime = vid.textTracks[0].cues[0].endTime;
+            console.log("text : " + text);      
+            console.log("startTime : " + startTime);              
+            console.log("endTime : " + endTime);          
+
+            console.log("==============두번째 자막정보=================");      
+            let text1 = vid.textTracks[0].cues[1].text;
+            let startTime1 = vid.textTracks[0].cues[1].startTime;
+            let endTime1 = vid.textTracks[0].cues[1].endTime;
+            console.log("text1 : " + text1);      
+            console.log("startTime1 : " + startTime1);              
+            console.log("endTime1 : " + endTime1);   
+
+
+            vid.currentTime = startTime1;
+            endTimeInQue = endTime1;
+            startTimeInQue = startTime1;
+            document.getElementById('trackText').innerHTML = text1; //자막
+
+        }
+
+
+
+
+        //비디오 재생 하는동안 체크하는 메소드
+        function checkTimeUpdate(){
+
+             console.log("##############  checkTimeUpdate  ###############");
+             console.log({vid})                           //{vid: video#video}
+             // //비디오 재생시간이 설정한 마지막 시간을 넘을때
+             // if(vid.currentTime > endTimeInQue) {
+             //    vid.currentTime = startTimeInQue;
+             // }
+                
+        }        
+
+
+
+
+
+
+        //이전 재생 함수
+        function preAction(ev){
+            console.log("##############  이전 재생함수 클릭  ###############");
+            console.log("trackNowIndex 이전 : " + trackNowIndex);
+
+            //현재 자막 번호가 0이면
+            if(trackNowIndex <= 1 ){
+                
+                console.log("제일 첫 자막입니다.- 제일 첫번째 자막 보여주기");
+                //현재 자막 index는 제일 첫번째 index
+                trackNowIndex = 1;              
+            
+            }else{
+                
+                //현재 자막 번호 하나 줄여주기
+                trackNowIndex = trackNowIndex - 1;
+                console.log("trackNowIndex 이후 : " + trackNowIndex);
+                //선택된 자막 큐 아이템
+                let selectedTrackInfo = trackInfoArray[trackNowIndex-1];    
+                //구간 재생 함수 호출
+                playSectionByTrackAction(selectedTrackInfo);
+            }
+
+        }
+
+
+        //다음 재생 함수
+        function nextAction(ev){
+            console.log("##############  다음 재생함수 클릭  ###############");
+            console.log("trackNowIndex 이전 : " + trackNowIndex);
+            
+           //현재 자막 번호가 마지막 큐의번호와 같거나 크면
+            if(trackNowIndex >= trackLastIndex ){
+                
+                console.log("제일 마지막 자막입니다.- 제일 마지막 자막 보여주기");
+                //현재 자막 index = 큐의 제일 마지막 번째 index
+                trackNowIndex = trackLastIndex;   
+
+            }else{
+                
+                //현재 자막 번호 하나 늘려주기
+                trackNowIndex = trackNowIndex + 1;
+                console.log("trackNowIndex 이후 : " + trackNowIndex);
+                //선택된 자막 큐 아이템
+                let selectedTrackInfo = trackInfoArray[trackNowIndex-1];    
+                //구간 재생 함수 호출
+                playSectionByTrackAction(selectedTrackInfo);
+
+            }
+
+        }
+
+
+        //구간 재생 함수
+        //param : 선택된 자막 큐 아이템
+        function playSectionByTrackAction(selectedTrackInfo){
+            console.log("##############  구간 재생 함수 진입  ###############");
+
+            let  index = selectedTrackInfo['index'];                    //번호id
+            let  text = selectedTrackInfo['text'];                      //텍스트
+            let  startTime =selectedTrackInfo['startTime'];             //시작시간
+            let  endTime = selectedTrackInfo['endTime'];                //종료시간    
+
+                console.log("자막번호 : " + index);
+                console.log("자막 : "    + text);
+                console.log("시작시간 : " + startTime);
+                console.log("종료시간 : " + endTime);
+
+
+            console.log("(" +  index +  "/" + (trackLastIndex) + ")");
+            vid.currentTime = startTime;
+            endTimeInQue = endTime;
+            startTimeInQue = startTime;
+            document.getElementById('trackText').innerHTML = text; //자막
+        }
+
+
+
+        //해당 구간 무한 반복
+        function loopAction(ev){
+            console.log("##############  구간 무한 반복 함수 클릭  ###############");
+        }
+
+
+
+
+
+
+
+
+
+
+
+/*
+
+
+        //참고. : 큐 컨트롤
+          const track = player.textTracks()[0];
+          track.addEventListener("cuechange", () => {
+            if (track.activeCues != null) {
+              const cue = track.activeCues[0];
+              if (cue !== undefined) {
+                this.setState({ activeCueText: track.activeCues[0].text });
+              }
+            }
+          });
+        });
+
+*/
+
+
+
+
+        //참고 함수
+        function test(ev){
+            let video = document.querySelector('video');
+            video.addEventListener('loadedmetadata', () => {
+              const track = video.addTextTrack("captions", "简体中文Subtitles", "zh_CN");
+              track.mode = "showing";
+
+              const cueCn = new VTTCue(0, 2.500, '字幕会在0至2.5秒间显示');
+              track.addCue(cueCn);
+
+              const cueEn = new VTTCue(2.6, 4, 'Subtitles will display between 2.6 and 4 seconds');
+              track.addCue(cueEn);
+            });
+        }
+
+
+
+
+
+
+
+/*
+참고 사이트
+https://www.html5rocks.com/ko/tutorials/track/basics/
+https://codesandbox.io/embed/video-captions-3ocub
+https://stackoverflow.com/questions/32043406/is-there-any-way-to-get-current-captions-text-from-video-tag-using-video-js
+https://developer.mozilla.org/en-US/docs/Web/API/VTTCue
+
+
+*/
+
+    </script>
+</body>
+</html>
+
+
+
+
+
